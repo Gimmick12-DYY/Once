@@ -1,13 +1,14 @@
 # Re-Search
 
-**Perplexity API → Markdown** notes in your Obsidian vault folder. Default flow: set `ONCE_DEFAULT_OUT_DIR` once, then run `npm run once -- -research "..."`.
+**Perplexity + Claude → Markdown** notes in your Obsidian vault folder.
 
 Optional: use `-obsidian` to call the [Obsidian CLI](https://obsidian.md/cli) (with automatic fallback to file output when `ONCE_DEFAULT_OUT_DIR` is set).
 
 ## Prerequisites
 
 - **Node.js 18+**
-- **Perplexity API key** — `PERPLEXITY_API_KEY` (see [Perplexity API docs](https://docs.perplexity.ai/))
+- **Perplexity API key** — `PERPLEXITY_API_KEY` for `-research` (see [Perplexity API docs](https://docs.perplexity.ai/))
+- **Anthropic API key** — `ANTHROPIC_API_KEY` for `-summarize`
 - **Obsidian CLI** (optional): Settings → **General** → **Command line interface**, register CLI, `obsidian` on `PATH`
 
 ## Setup
@@ -16,7 +17,9 @@ Optional: use `-obsidian` to call the [Obsidian CLI](https://obsidian.md/cli) (w
 cp .env.example .env
 # Edit .env or export in shell:
 export PERPLEXITY_API_KEY="your-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
 export ONCE_DEFAULT_OUT_DIR="/path/to/your/vault/Import"
+export ONCE_NEED_DIR="/path/to/your/vault/need"
 # Optional for Obsidian CLI:
 export OBSIDIAN_VAULT="Gimmicks"
 ```
@@ -52,6 +55,7 @@ npm run once -- -research "Your question"
 
 ```bash
 once -research "Your question"
+once -summarize "paper.pdf"
 ```
 
 Other examples:
@@ -62,6 +66,9 @@ once -research "Your question" -dry-run
 
 # Explicit file path
 once -research "Your question" -out "/path/to/note.md"
+
+# Summarize PDF from need folder (ONCE_NEED_DIR or inferred sibling folder)
+once -summarize "paper.pdf"
 
 # Obsidian CLI (falls back to ONCE_DEFAULT_OUT_DIR if CLI fails)
 once -research "Your question" -folder "Import" -obsidian
@@ -75,12 +82,14 @@ once -research "Fixture" -fixture /path/to/Re-Search/fixtures/sample-completion.
 | Flag | Description |
 |------|-------------|
 | `-research` | Research question (alias for `--query`) |
+| `-summarize` | Summarize a PDF file from need folder |
 | `--query` | Same as `-research` |
 | `-context` / `--context` | Extra context |
 | `-folder` / `--folder` | Subpath for note name (e.g. `Import`) |
 | `-title` / `--title` | Note title / filename base |
 | `-vault` / `--vault` | Vault name for Obsidian CLI |
 | `-model` / `--model` | Perplexity model (default: `sonar`) |
+| `-claude-model` / `--claude-model` | Claude model for `-summarize` (default: `claude-haiku-4-5`) |
 | `-append` / `--append` | Append to file or pass `--append` to CLI |
 | `-dry-run` / `--dry-run` | Print Markdown only |
 | `-obsidian` | Prefer Obsidian CLI write |
@@ -89,6 +98,7 @@ once -research "Fixture" -fixture /path/to/Re-Search/fixtures/sample-completion.
 | `-h` / `--help` | Help |
 
 With `ONCE_DEFAULT_OUT_DIR` set and no `-out`: a `.md` file is written under that directory. With `-obsidian` and a failed CLI, the same directory is used as fallback.
+For `-summarize`, source PDFs are loaded from `ONCE_NEED_DIR`; if unset, `once` infers `../need` beside your output folder.
 
 ## npm scripts
 
@@ -99,7 +109,8 @@ With `ONCE_DEFAULT_OUT_DIR` set and no `-out`: a `.md` file is written under tha
 
 ## Troubleshooting
 
-- **`PERPLEXITY_API_KEY is not set`** — Export it or use `--fixture` for offline tests.
+- **`PERPLEXITY_API_KEY is not set`** — Needed for `-research` (or use `--fixture`).
+- **`ANTHROPIC_API_KEY is not set`** — Needed for `-summarize` (or use `--fixture`).
 - **`Obsidian CLI not available`** — Use file mode (`ONCE_DEFAULT_OUT_DIR` or `-out`), or fix CLI in Obsidian settings. Check `obsidian --help`.
 - **Very large notes** — Above ~200k characters, Obsidian `--content` may fail; use `-out` or `-dry-run` and save manually.
 

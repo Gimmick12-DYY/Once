@@ -5,11 +5,13 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync, mkdirSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
+import { basename, dirname, extname, resolve } from 'node:path';
 
 const PERPLEXITY_URL = 'https://api.perplexity.ai/chat/completions';
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'sonar';
+const DEFAULT_CLAUDE_MODEL = 'claude-haiku-4-5';
 /** Very large bodies can exceed OS argv limits when passed as --content */
 const CONTENT_ARG_SAFE_MAX = 200_000;
 
@@ -29,6 +31,8 @@ Script usage:
 Required:
   --query <text>           Research question (or prompt)
   -research <text>         Alias for --query
+  --summarize <pdfName>    Summarize a PDF from need folder
+  -summarize <pdfName>     Alias for --summarize
 
 Options:
   --context <text>         Extra user context
@@ -41,6 +45,8 @@ Options:
   -vault <name>            Alias for --vault
   --model <id>             Perplexity model (default: ${DEFAULT_MODEL})
   -model <id>              Alias for --model
+  --claude-model <id>      Claude model for -summarize (default: ${DEFAULT_CLAUDE_MODEL})
+  -claude-model <id>       Alias for --claude-model
   --append                 Append to existing note instead of creating/overwriting
   -append                  Alias for --append
   --dry-run                Print Markdown only; do not call Obsidian CLI
@@ -53,12 +59,15 @@ Options:
   -h, --help               Show this help
 
 Environment:
-  PERPLEXITY_API_KEY       Required unless --fixture is used
+  PERPLEXITY_API_KEY       Required for -research unless --fixture is used
+  ANTHROPIC_API_KEY        Required for -summarize unless --fixture is used
   OBSIDIAN_VAULT           Optional default vault name
   ONCE_DEFAULT_OUT_DIR     Optional default directory for auto file output
+  ONCE_NEED_DIR            Optional directory for source PDFs (default: sibling need folder)
 
 Examples:
   npm run once -- -research "Summarize CRISPR off-target mitigation"
+  npm run once -- -summarize "paper.pdf"
   npm run once -- -research "..." -out "/absolute/path/Import/note.md"
   npm run once -- -research "..." -dry-run
   npm run once -- -research "..." -folder "Inbox" -title "CRISPR notes" -obsidian
@@ -69,11 +78,13 @@ Examples:
 function parseArgs(argv) {
   const out = {
     query: null,
+    summarize: null,
     context: null,
     title: null,
     folder: null,
     vault: null,
     model: DEFAULT_MODEL,
+    claudeModel: DEFAULT_CLAUDE_MODEL,
     append: false,
     dryRun: false,
     obsidian: false,
@@ -122,6 +133,9 @@ function parseArgs(argv) {
         case 'query':
           out.query = val;
           break;
+        case 'summarize':
+          out.summarize = val;
+          break;
         case 'context':
           out.context = val;
           break;
@@ -136,6 +150,9 @@ function parseArgs(argv) {
           break;
         case 'model':
           out.model = val;
+          break;
+        case 'claude-model':
+          out.claudeModel = val;
           break;
         case 'out':
           out.outPath = val;
@@ -159,6 +176,9 @@ function parseArgs(argv) {
         case 'research':
           out.query = val;
           break;
+        case 'summarize':
+          out.summarize = val;
+          break;
         case 'context':
           out.context = val;
           break;
@@ -173,6 +193,9 @@ function parseArgs(argv) {
           break;
         case 'model':
           out.model = val;
+          break;
+        case 'claude-model':
+          out.claudeModel = val;
           break;
         case 'out':
           out.outPath = val;
@@ -266,7 +289,23 @@ A numbered list of 3–7 focused follow-up questions.
 
 Do not add any heading before the first "## Key Findings". Do not wrap the answer in a code fence.`;
 
-async function callPerplexity({ apiKey, model, query, context }) {
+const PDF_SUMMARY_PROMPT = `You are a PDF summarization assistant. Read the provided PDF document and produce markdown with exactly these top-level sections:
+
+## Document Overview
+2-4 bullets capturing topic, purpose, and scope.
+
+## Key Findings
+5-10 concise bullets of the most important insights.
+
+## Actionable Takeaways
+3-7 bullets of practical steps or implications.
+
+## Sources
+If source metadata is unknown, include one bullet describing this summary was generated from the provided PDF text extraction.
+
+Do not wrap output in a code block.`;
+
+async function callPerplexity({ apiKey, model, query, context, systemPrompt = SYSTEM_PROMPT }) {
   const userParts = [`Research question:\n${query.trim()}`];
   if (context?.trim()) {
     userParts.push(`Additional context from the user:\n${context.trim()}`);
@@ -282,7 +321,7 @@ async function callPerplexity({ apiKey, model, query, context }) {
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: user },
       ],
       temperature: 0.3,
@@ -311,6 +350,80 @@ async function callPerplexity({ apiKey, model, query, context }) {
     throw new Error('Unexpected Perplexity response (missing choices[0].message.content)');
   }
   return content;
+}
+
+async function callClaude({
+  apiKey,
+  model,
+  query,
+  context,
+  systemPrompt = PDF_SUMMARY_PROMPT,
+  pdfBase64,
+}) {
+  const userParts = [`Task:\n${query.trim()}`];
+  if (context?.trim()) {
+    userParts.push(`Context:\n${context.trim()}`);
+  }
+  const user = userParts.join('\n\n');
+  const requestContent = [{ type: 'text', text: user }];
+  if (pdfBase64) {
+    requestContent.unshift({
+      type: 'document',
+      source: {
+        type: 'base64',
+        media_type: 'application/pdf',
+        data: pdfBase64,
+      },
+    });
+  }
+
+  const res = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1800,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: requestContent }],
+    }),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = text;
+    try {
+      const j = JSON.parse(text);
+      msg = j.error?.message ?? j.message ?? text;
+    } catch {
+      /* keep raw text */
+    }
+    throw new Error(`Claude API error ${res.status}: ${msg}`);
+  }
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('Claude returned non-JSON body');
+  }
+
+  const contentItems = data.content;
+  if (!Array.isArray(contentItems) || contentItems.length === 0) {
+    throw new Error('Unexpected Claude response (missing content array)');
+  }
+  const responseText = contentItems
+    .filter((item) => item?.type === 'text' && typeof item.text === 'string')
+    .map((item) => item.text)
+    .join('\n')
+    .trim();
+  if (!responseText) {
+    throw new Error('Unexpected Claude response (no text content)');
+  }
+  return responseText;
 }
 
 function loadFixtureContent(fixturePath) {
@@ -393,6 +506,25 @@ function resolveAutoOutPath({ opts, notePath }) {
   return resolve(dir, `${safeName}.md`);
 }
 
+function resolveNeedDir() {
+  const explicit = process.env.ONCE_NEED_DIR?.trim();
+  if (explicit) return resolve(explicit);
+  const outDir = process.env.ONCE_DEFAULT_OUT_DIR?.trim();
+  if (outDir) return resolve(dirname(resolve(outDir)), 'Need');
+  return resolve(process.cwd(), 'Need');
+}
+
+async function loadPdfBase64(pdfPath) {
+  let data;
+  try {
+    data = readFileSync(pdfPath);
+  } catch (e) {
+    throw new Error(`Cannot read PDF: ${pdfPath} (${e.message})`);
+  }
+  if (!data || data.length === 0) throw new Error(`PDF is empty: ${pdfPath}`);
+  return data.toString('base64');
+}
+
 async function main() {
   let opts;
   try {
@@ -408,32 +540,90 @@ async function main() {
     return;
   }
 
-  if (!opts.query?.trim()) {
-    console.error('Error: -research or --query is required.');
+  const hasResearch = Boolean(opts.query?.trim());
+  const hasSummarize = Boolean(opts.summarize?.trim());
+  if (!hasResearch && !hasSummarize) {
+    console.error('Error: provide -research/--query or -summarize/--summarize.');
     printHelp();
     process.exitCode = 1;
     return;
   }
+  if (hasResearch && hasSummarize) {
+    console.error('Error: use either -research or -summarize, not both.');
+    process.exitCode = 1;
+    return;
+  }
 
-  const apiKey = process.env.PERPLEXITY_API_KEY;
+  const perplexityApiKey = process.env.PERPLEXITY_API_KEY;
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
   let body;
-  if (opts.fixture) {
-    body = loadFixtureContent(opts.fixture);
-  } else {
-    if (!apiKey?.trim()) {
-      console.error(
-        'Error: PERPLEXITY_API_KEY is not set. Export it or use a .env loader; or use --fixture for offline tests.'
-      );
+  let effectiveQuery = opts.query;
+  let effectiveContext = opts.context;
+  let summarizeMode = false;
+  let summarizePdfBase64 = null;
+  if (hasSummarize) {
+    summarizeMode = true;
+    const summarizeInput = opts.summarize.trim();
+    const resolvedPdfPath = summarizeInput.startsWith('/')
+      ? resolve(summarizeInput)
+      : resolve(resolveNeedDir(), summarizeInput);
+    if (extname(resolvedPdfPath).toLowerCase() !== '.pdf') {
+      console.error('Error: -summarize expects a .pdf filename or path.');
       process.exitCode = 1;
       return;
     }
+    if (!existsSync(resolvedPdfPath)) {
+      console.error(`Error: PDF not found: ${resolvedPdfPath}`);
+      process.exitCode = 1;
+      return;
+    }
+    const pdfBasename = basename(resolvedPdfPath);
     try {
-      body = await callPerplexity({
-        apiKey: apiKey.trim(),
-        model: opts.model,
-        query: opts.query,
-        context: opts.context,
-      });
+      summarizePdfBase64 = await loadPdfBase64(resolvedPdfPath);
+      effectiveQuery = `Summarize PDF: ${pdfBasename}`;
+      effectiveContext = `PDF file: ${pdfBasename}`;
+    } catch (e) {
+      console.error(e.message || String(e));
+      process.exitCode = 1;
+      return;
+    }
+  }
+  if (opts.fixture) {
+    body = loadFixtureContent(opts.fixture);
+  } else {
+    try {
+      if (summarizeMode) {
+        if (!anthropicApiKey?.trim()) {
+          console.error(
+            'Error: ANTHROPIC_API_KEY is not set. Export it or use --fixture for offline tests.'
+          );
+          process.exitCode = 1;
+          return;
+        }
+        body = await callClaude({
+          apiKey: anthropicApiKey.trim(),
+          model: opts.claudeModel,
+          query: effectiveQuery,
+          context: effectiveContext,
+          systemPrompt: PDF_SUMMARY_PROMPT,
+          pdfBase64: summarizePdfBase64,
+        });
+      } else {
+        if (!perplexityApiKey?.trim()) {
+          console.error(
+            'Error: PERPLEXITY_API_KEY is not set. Export it or use --fixture for offline tests.'
+          );
+          process.exitCode = 1;
+          return;
+        }
+        body = await callPerplexity({
+          apiKey: perplexityApiKey.trim(),
+          model: opts.model,
+          query: effectiveQuery,
+          context: effectiveContext,
+          systemPrompt: SYSTEM_PROMPT,
+        });
+      }
     } catch (e) {
       console.error(e.message || String(e));
       process.exitCode = 1;
@@ -444,7 +634,7 @@ async function main() {
   const now = new Date();
   const title =
     opts.title?.trim() ||
-    `${isoDateStamp(now)}-${slugify(opts.query, 40)}`;
+    `${isoDateStamp(now)}-${slugify(effectiveQuery, 40)}`;
   const noteTitle = sanitizePathSegment(title);
   const folder = opts.folder?.trim()
     ? opts.folder
@@ -457,8 +647,8 @@ async function main() {
 
   const markdown = buildNoteMarkdown({
     title,
-    query: opts.query,
-    context: opts.context,
+    query: effectiveQuery,
+    context: effectiveContext,
     body,
     createdAt: isoDateTime(now),
   });
