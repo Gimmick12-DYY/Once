@@ -1,7 +1,7 @@
 {
-  "name": "re-search",
+  "name": "once",
   "version": "1.0.0",
-  "description": "Perplexity API → Markdown notes (vault folder or Obsidian CLI)",
+  "description": "Once — Perplexity + Claude → Markdown notes (vault folder or Obsidian CLI)",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,6 +11,6 @@
     "once": "bin/once.mjs"
   },
   "scripts": {
-    "once": "node scripts/research-to-obsidian.mjs"
+    "once": "node scripts/once.mjs"
   }
 }

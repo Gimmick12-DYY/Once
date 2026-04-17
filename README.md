@@ -1,4 +1,4 @@
-# Re-Search
+# Once
 
 **Perplexity + Claude → Markdown** notes in your Obsidian vault folder.
 
@@ -29,7 +29,7 @@ export OBSIDIAN_VAULT="Gimmicks"
 One-time link from the repo root:
 
 ```bash
-cd "/path/to/Re-Search"
+cd "/path/to/Once"
 npm link
 ```
 
@@ -48,7 +48,7 @@ No `npm run` or `--` needed.
 **From the repo** (when you have not linked globally):
 
 ```bash
-cd "/path/to/Re-Search"
+cd "/path/to/Once"
 npm run once -- -research "Your question"
 ```
 
@@ -79,7 +79,7 @@ once -sum "slides.pdf" -slide
 once -r "Your question" -folder "Import" -obsidian
 
 # Offline test (no API; run from repo or use absolute -fixture path)
-once -r "Fixture" -fixture /path/to/Re-Search/fixtures/sample-completion.json -dry-run
+once -r "Fixture" -fixture /path/to/Once/fixtures/sample-completion.json -dry-run
 ```
 
 ### CLI flags
@@ -123,5 +123,5 @@ For `-sum`/`-summarize`, source PDFs are loaded from `ONCE_NEED_DIR`; if unset, 
 
 ## Project layout
 
-- [`scripts/research-to-obsidian.mjs`](scripts/research-to-obsidian.mjs) — Entrypoint
+- [`scripts/once.mjs`](scripts/once.mjs) — Entrypoint
 - [`fixtures/sample-completion.json`](fixtures/sample-completion.json) — Sample fixture for tests

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const binDir = dirname(fileURLToPath(import.meta.url));
-const pipeline = join(binDir, '..', 'scripts', 'research-to-obsidian.mjs');
+const pipeline = join(binDir, '..', 'scripts', 'once.mjs');
 
 const r = spawnSync(process.execPath, [pipeline, ...process.argv.slice(2)], {
   stdio: 'inherit',

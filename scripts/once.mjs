@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Perplexity → Obsidian pipeline (on-demand CLI).
+ * Once — Perplexity + Claude pipeline (on-demand CLI).
  * Requires: Node 18+, PERPLEXITY_API_KEY (unless --fixture). Optional: ONCE_DEFAULT_OUT_DIR for short writes.
  */
 
@@ -17,7 +17,7 @@ const CONTENT_ARG_SAFE_MAX = 200_000;
 
 function printHelp() {
   console.log(`
-once — Perplexity API → Obsidian vault
+Once — Perplexity + Claude → Obsidian notes
 
 Typical usage:
   once -r "Your question"                 (after: cd repo && npm link)
@@ -25,7 +25,7 @@ Typical usage:
  (set ONCE_DEFAULT_OUT_DIR to your vault Import folder)
 
 Script usage:
-  node scripts/research-to-obsidian.mjs --query "Your question" [options]
+  node scripts/once.mjs --query "Your question" [options]
   npm run once -- -r "Your question" [-obsidian]
 
 Required:
