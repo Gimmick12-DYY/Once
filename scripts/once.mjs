@@ -338,10 +338,10 @@ Write a compact 3-5 sentence abstract-level summary of the paper.
 Summarize study design, data, procedures, and analytic approach clearly.
 
 ## Key Findings
-Use bullets for the principal findings and evidence.
+Use bullets for the principal findings and evidence, under each bullet, please provide 2-3 sentences to support the bullet.
 
 ## Evaluation
-Assess strengths, limitations, validity concerns, and practical significance.
+Assess strengths, limitations, validity concerns, and practical significance of the study.
 
 Do not wrap output in a code block.`;
 
@@ -351,10 +351,10 @@ const PDF_SUMMARY_PROMPT_SLIDE = `You are a slide-deck summarization assistant. 
 List the major sections/themes of the slide deck in order.
 
 ## Section-by-Section Summary
-For each major section, provide a concise but detailed summary of the key points and supporting details.
+For each major section, provide a concise but detailed summary of the key points and supporting details, if there's mathematical equations, please include the equations in the summary.
 
 ## Key Takeaway
-Provide the single most important overall takeaway and 2-4 supporting bullets.
+Provide the single most important overall takeaway and 2-4 supporting bullets from the paper.
 
 Do not wrap output in a code block.`;
 
